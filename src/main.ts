@@ -51,9 +51,14 @@ type AppState = {
 type AMapWindow = Window &
   typeof globalThis & {
     AMap?: any;
+    _AMapSecurityConfig?: {
+      securityJsCode: string;
+    };
   };
 
 const AMAP_KEY = import.meta.env.VITE_AMAP_KEY ?? '';
+const AMAP_SECURITY_CODE = import.meta.env.VITE_AMAP_SECURITY_CODE ?? '';
+const AMAP_API_VERSION = '1.4.15';
 const MANIFEST_URL = '/data/media_manifest.json';
 const CLOSE_ZOOM = 5;
 const NEARBY_DISTANCE_KM = 180;
@@ -75,13 +80,19 @@ const app_state: AppState = {
 const app_root = require_element<HTMLDivElement>('#app');
 let map_instance: any = null;
 let marker_by_location_id = new Map<string, any>();
+let location_polyline: any = null;
 let carousel_timer_id: number | null = null;
 
 app_root.innerHTML = `
   <main class="app_shell">
     <section class="map_region" aria-label="旅行照片地图">
       <div id="map_surface" class="map_surface"></div>
+      <div id="map_visual_overlay" class="map_visual_overlay" aria-hidden="false">
+        <svg id="route_overlay" class="route_overlay" aria-hidden="true"></svg>
+        <div id="place_overlay" class="place_overlay"></div>
+      </div>
       <div id="map_error" class="map_error" hidden></div>
+      <div id="map_hint" class="map_hint" hidden></div>
       <div class="map_toolbar">
         <button id="fit_button" class="toolbar_button" type="button">适配全部</button>
         <span id="toolbar_status" class="toolbar_status">正在加载媒体</span>
@@ -98,7 +109,10 @@ app_root.innerHTML = `
 `;
 
 const map_surface = require_element<HTMLDivElement>('#map_surface');
+const route_overlay = require_element<SVGSVGElement>('#route_overlay');
+const place_overlay = require_element<HTMLDivElement>('#place_overlay');
 const map_error = require_element<HTMLDivElement>('#map_error');
+const map_hint = require_element<HTMLDivElement>('#map_hint');
 const panel_body = require_element<HTMLDivElement>('#panel_body');
 const panel_summary = require_element<HTMLParagraphElement>('#panel_summary');
 const toolbar_status = require_element<HTMLSpanElement>('#toolbar_status');
@@ -119,12 +133,16 @@ async function initialize_app() {
     render_app();
     start_carousel();
 
-    if (!AMAP_KEY) {
-      show_map_error('未配置高德 Web JS Key。复制 `.env.example` 为 `.env`，填入 `VITE_AMAP_KEY` 后重新运行。');
-      return;
-    }
+  if (!AMAP_KEY) {
+    show_map_error('未配置高德 Web JS Key。复制 `.env.example` 为 `.env`，填入 `VITE_AMAP_KEY` 后重新运行。');
+    return;
+  }
 
-    await load_amap_script(AMAP_KEY);
+  if (!AMAP_SECURITY_CODE) {
+    show_map_hint('高德 JS API 通常还需要安全密钥。若底图空白，请在 `.env` 中添加 `VITE_AMAP_SECURITY_CODE` 后重新构建。');
+  }
+
+  await load_amap_script(AMAP_KEY);
     initialize_map();
   } catch (error) {
     const error_message = error instanceof Error ? error.message : String(error);
@@ -305,10 +323,18 @@ function initialize_map() {
     return;
   }
 
+  const base_tile_layer = new amap_window.AMap.TileLayer({
+    zIndex: 1,
+    zooms: [2, 18],
+  });
+
   map_instance = new amap_window.AMap.Map(map_surface, {
     center: DEFAULT_CENTER,
     zoom: DEFAULT_ZOOM,
-    viewMode: '2D',
+    zooms: [2, 18],
+    layers: [base_tile_layer],
+    features: ['bg', 'road', 'building', 'point'],
+    mapStyle: 'amap://styles/normal',
     scrollWheel: true,
     resizeEnable: true,
   });
@@ -316,10 +342,23 @@ function initialize_map() {
   app_state.is_map_ready = true;
   render_toolbar();
   create_markers();
-  fit_all_locations();
+  create_location_polyline();
+  render_visual_overlay();
 
-  map_instance.on('zoomend', select_nearby_location_if_close);
-  map_instance.on('moveend', select_nearby_location_if_close);
+  map_instance.on('complete', () => {
+    fit_all_locations();
+    window.setTimeout(update_visual_overlay, 120);
+  });
+
+  map_instance.on('zoomend', () => {
+    update_visual_overlay();
+    select_nearby_location_if_close();
+  });
+  map_instance.on('moveend', () => {
+    update_visual_overlay();
+    select_nearby_location_if_close();
+  });
+  map_instance.on('resize', update_visual_overlay);
 }
 
 function create_markers() {
@@ -329,12 +368,12 @@ function create_markers() {
   for (const location_group of app_state.location_groups) {
     const marker_element = document.createElement('div');
     marker_element.className = 'amap_marker';
-    marker_element.textContent = String(location_group.media_items.length);
+    marker_element.innerHTML = `<span>${location_group.media_items.length}</span><strong>${escape_html(location_group.place)}</strong>`;
 
     const marker = new amap_window.AMap.Marker({
       position: [location_group.map_longitude, location_group.map_latitude],
       content: marker_element,
-      anchor: 'bottom-center',
+      offset: new amap_window.AMap.Pixel(-38, -17),
       title: location_group.title,
     });
 
@@ -349,22 +388,49 @@ function create_markers() {
   update_marker_styles();
 }
 
+function create_location_polyline() {
+  if (!map_instance || app_state.location_groups.length < 2) {
+    return;
+  }
+
+  const amap_window = window as AMapWindow;
+  const sorted_groups = [...app_state.location_groups].sort((left_group, right_group) => {
+    const left_date = left_group.media_items[0]?.date_time_original ?? '';
+    const right_date = right_group.media_items[0]?.date_time_original ?? '';
+    return left_date.localeCompare(right_date);
+  });
+  const path = sorted_groups.map((location_group) => [location_group.map_longitude, location_group.map_latitude]);
+
+  location_polyline = new amap_window.AMap.Polyline({
+    path,
+    strokeColor: '#2f746f',
+    strokeOpacity: 0.85,
+    strokeWeight: 4,
+    strokeStyle: 'solid',
+    lineJoin: 'round',
+    zIndex: 20,
+  });
+  map_instance.add(location_polyline);
+}
+
 function fit_all_locations() {
   if (!map_instance || app_state.location_groups.length === 0) {
     return;
   }
 
-  const amap_window = window as AMapWindow;
-  const bounds = new amap_window.AMap.Bounds(
-    [app_state.location_groups[0].map_longitude, app_state.location_groups[0].map_latitude],
-    [app_state.location_groups[0].map_longitude, app_state.location_groups[0].map_latitude],
-  );
-
-  for (const location_group of app_state.location_groups) {
-    bounds.extend([location_group.map_longitude, location_group.map_latitude]);
+  const overlays = [...marker_by_location_id.values()];
+  if (location_polyline) {
+    overlays.push(location_polyline);
   }
+  map_instance.setFitView(overlays, false, get_map_padding(), 8);
+  window.setTimeout(update_visual_overlay, 120);
+}
 
-  map_instance.setBounds(bounds, false, [70, 420, 70, 70]);
+function get_map_padding(): [number, number, number, number] {
+  if (window.matchMedia('(max-width: 900px)').matches) {
+    return [90, 48, 90, 48];
+  }
+  return [90, 420, 90, 90];
 }
 
 function select_nearby_location_if_close() {
@@ -413,6 +479,7 @@ function select_location(location_id: string, should_pan_map: boolean) {
         selected_group.map_longitude,
         selected_group.map_latitude,
       ]);
+      window.setTimeout(update_visual_overlay, 120);
     }
   }
 }
@@ -454,6 +521,89 @@ function update_marker_styles() {
     const marker_element = marker.getContent() as HTMLElement;
     marker_element.classList.toggle('is_active', location_id === app_state.selected_location_id);
   }
+
+  place_overlay.querySelectorAll<HTMLElement>('[data-overlay-location-id]').forEach((element) => {
+    element.classList.toggle('is_active', element.dataset.overlayLocationId === app_state.selected_location_id);
+  });
+}
+
+function render_visual_overlay() {
+  place_overlay.innerHTML = app_state.location_groups
+    .map((location_group) => {
+      return `
+        <button
+          class="visual_marker"
+          type="button"
+          data-overlay-location-id="${escape_attribute(location_group.id)}"
+          aria-label="${escape_attribute(location_group.title)}"
+        >
+          <span>${location_group.media_items.length}</span>
+          <strong>${escape_html(location_group.place)}</strong>
+        </button>
+      `;
+    })
+    .join('');
+
+  place_overlay.querySelectorAll<HTMLButtonElement>('[data-overlay-location-id]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const location_id = button.dataset.overlayLocationId;
+      if (location_id) {
+        select_location(location_id, true);
+      }
+    });
+  });
+
+  update_visual_overlay();
+  update_marker_styles();
+}
+
+function update_visual_overlay() {
+  const overlay_rect = place_overlay.getBoundingClientRect();
+  route_overlay.setAttribute('viewBox', `0 0 ${overlay_rect.width} ${overlay_rect.height}`);
+  route_overlay.setAttribute('width', String(overlay_rect.width));
+  route_overlay.setAttribute('height', String(overlay_rect.height));
+
+  const sorted_groups = [...app_state.location_groups].sort((left_group, right_group) => {
+    const left_date = left_group.media_items[0]?.date_time_original ?? '';
+    const right_date = right_group.media_items[0]?.date_time_original ?? '';
+    return left_date.localeCompare(right_date);
+  });
+
+  const points = sorted_groups.map(get_location_screen_point);
+  const route_path = points
+    .map((point, index) => {
+      return `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
+    })
+    .join(' ');
+
+  route_overlay.innerHTML = route_path
+    ? `<path d="${route_path}" fill="none" stroke="#2f746f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"></path>`
+    : '';
+
+  place_overlay.querySelectorAll<HTMLElement>('[data-overlay-location-id]').forEach((element) => {
+    const location_group = app_state.location_groups.find((group) => group.id === element.dataset.overlayLocationId);
+    if (!location_group) {
+      return;
+    }
+    const point = get_location_screen_point(location_group);
+    element.style.transform = `translate(${point.x}px, ${point.y}px) translate(-50%, -50%)`;
+  });
+}
+
+function get_location_screen_point(location_group: LocationGroup): { x: number; y: number } {
+  if (map_instance?.lngLatToContainer) {
+    const pixel = map_instance.lngLatToContainer([location_group.map_longitude, location_group.map_latitude]);
+    const x = Number(pixel?.x);
+    const y = Number(pixel?.y);
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      return { x, y };
+    }
+  }
+
+  const overlay_rect = place_overlay.getBoundingClientRect();
+  const x = ((location_group.longitude + 180) / 360) * overlay_rect.width;
+  const y = ((90 - location_group.latitude) / 180) * overlay_rect.height;
+  return { x, y };
 }
 
 function show_map_error(message: string) {
@@ -469,16 +619,27 @@ function show_map_error(message: string) {
   render_toolbar();
 }
 
+function show_map_hint(message: string) {
+  map_hint.hidden = false;
+  map_hint.textContent = message;
+}
+
 function load_amap_script(amap_key: string): Promise<void> {
   const amap_window = window as AMapWindow;
   if (amap_window.AMap) {
     return Promise.resolve();
   }
 
+  if (AMAP_SECURITY_CODE) {
+    amap_window._AMapSecurityConfig = {
+      securityJsCode: AMAP_SECURITY_CODE,
+    };
+  }
+
   return new Promise((resolve, reject) => {
     const script_element = document.createElement('script');
     const script_url = new URL('https://webapi.amap.com/maps');
-    script_url.searchParams.set('v', '2.0');
+    script_url.searchParams.set('v', AMAP_API_VERSION);
     script_url.searchParams.set('key', amap_key);
 
     script_element.src = script_url.toString();
@@ -489,7 +650,7 @@ function load_amap_script(amap_key: string): Promise<void> {
   });
 }
 
-function require_element<T extends HTMLElement>(selector: string): T {
+function require_element<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
   if (!element) {
     throw new Error(`Missing required element: ${selector}`);

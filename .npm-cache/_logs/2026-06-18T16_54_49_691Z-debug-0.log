@@ -1,0 +1,25 @@
+0 verbose cli C:\Program Files\nodejs\node.exe C:\Program Files\nodejs\node_modules\npm\bin\npm-cli.js
+1 info using npm@10.9.2
+2 info using node@v22.14.0
+3 silly config load:file:C:\Program Files\nodejs\node_modules\npm\npmrc
+4 silly config load:file:C:\Users\40998\Desktop\travel_map\.npmrc
+5 silly config load:file:C:\Users\40998\.npmrc
+6 silly config load:file:C:\Users\40998\AppData\Roaming\npm\etc\npmrc
+7 verbose title npm view @openai/codex version
+8 verbose argv "view" "@openai/codex" "version" "--cache" "C:\\Users\\40998\\Desktop\\travel_map\\.npm-cache"
+9 verbose logfile logs-max:10 dir:C:\Users\40998\Desktop\travel_map\.npm-cache\_logs\2026-06-18T16_54_49_691Z-
+10 verbose logfile C:\Users\40998\Desktop\travel_map\.npm-cache\_logs\2026-06-18T16_54_49_691Z-debug-0.log
+11 silly logfile done cleaning log files
+12 http fetch GET 200 https://registry.npmjs.org/npm 1913ms
+13 http fetch GET 200 https://registry.npmjs.org/@openai%2fcodex 1899ms (cache miss)
+14 verbose cwd C:\Users\40998\Desktop\travel_map
+15 verbose os Windows_NT 10.0.26200
+16 verbose node v22.14.0
+17 verbose npm  v10.9.2
+18 notice
+18 notice New major version of npm available! 10.9.2 -> 11.17.0
+18 notice Changelog: https://github.com/npm/cli/releases/tag/v11.17.0
+18 notice To update run: npm install -g npm@11.17.0
+18 notice  { force: true, [Symbol(proc-log.meta)]: true }
+19 verbose exit 0
+20 info ok
