@@ -1,0 +1,17 @@
+{
+  "name": "travel_map",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:media": "uv run --with pillow --with piexif scripts/build_media_manifest.py",
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc && vite build",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.4",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}

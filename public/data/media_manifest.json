@@ -1,0 +1,72 @@
+{
+  "generated_at": "2026-06-18T15:22:52.713598+00:00",
+  "source_directory": "test_src_with_metadata",
+  "media": [
+    {
+      "id": "test_photo_beijing",
+      "title": "北京测试照片",
+      "place": "北京",
+      "media_type": "image",
+      "full_src": "/media/full/test_photo_beijing.jpg",
+      "thumbnail_src": "/media/thumbnails/test_photo_beijing.jpg",
+      "latitude": 39.9042,
+      "longitude": 116.4074,
+      "map_latitude": 39.9056033,
+      "map_longitude": 116.4136423,
+      "date_time_original": "2026:06:18 20:02:00",
+      "offset_time_original": "+08:00",
+      "width": 5440,
+      "height": 7876,
+      "brief_metadata": {
+        "place": "北京",
+        "captured_at": "2026:06:18 20:02:00",
+        "coordinates": "39.904200, 116.407400",
+        "dimensions": "5440 × 7876"
+      },
+      "full_metadata": {
+        "file": "test_photo_beijing.jpg",
+        "source_file": "test_photo_beijing.jpg",
+        "media_type": "image",
+        "place": "北京",
+        "captured_at": "2026:06:18 20:02:00",
+        "offset_time_original": "+08:00",
+        "coordinates": "39.904200, 116.407400",
+        "map_coordinates": "39.905603, 116.413642",
+        "dimensions": "5440 × 7876"
+      }
+    },
+    {
+      "id": "test_photo_shanghai",
+      "title": "上海测试照片",
+      "place": "上海",
+      "media_type": "image",
+      "full_src": "/media/full/test_photo_shanghai.jpg",
+      "thumbnail_src": "/media/thumbnails/test_photo_shanghai.jpg",
+      "latitude": 31.2304,
+      "longitude": 121.4737,
+      "map_latitude": 31.2284577,
+      "map_longitude": 121.4782231,
+      "date_time_original": "2026:06:15 20:08:01",
+      "offset_time_original": "+08:00",
+      "width": 3412,
+      "height": 4940,
+      "brief_metadata": {
+        "place": "上海",
+        "captured_at": "2026:06:15 20:08:01",
+        "coordinates": "31.230400, 121.473700",
+        "dimensions": "3412 × 4940"
+      },
+      "full_metadata": {
+        "file": "test_photo_shanghai.jpg",
+        "source_file": "test_photo_shanghai.jpg",
+        "media_type": "image",
+        "place": "上海",
+        "captured_at": "2026:06:15 20:08:01",
+        "offset_time_original": "+08:00",
+        "coordinates": "31.230400, 121.473700",
+        "map_coordinates": "31.228458, 121.478223",
+        "dimensions": "3412 × 4940"
+      }
+    }
+  ]
+}
